@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculadora TRM vs Binance</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .loader {
+            width: 24px;
+            height: 24px;
+            border: 3px solid #FFF;
+            border-bottom-color: transparent;
+            border-radius: 50%;
+            display: inline-block;
+            box-sizing: border-box;
+            animation: rotation 1s linear infinite;
+        }
+        @keyframes rotation {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-white flex items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-md mx-auto">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-cyan-400">Calculadora de Arbitraje</h1>
+            <p class="text-slate-400 mt-1">TRM Colombia vs. Spot Binance (USDT/COP)</p>
+        </header>
+
+        <main class="space-y-6">
+            <!-- Sección de Tasas Actuales -->
+            <section class="bg-slate-800 p-5 rounded-xl shadow-lg">
+                <h2 class="text-lg font-semibold mb-4 text-slate-300">Tasas de Referencia Actuales</h2>
+                <div class="space-y-3">
+                    <div class="flex justify-between items-center">
+                        <span class="text-slate-400">TRM Oficial (BanRep):</span>
+                        <div id="trm-loader" class="loader loader-sm"></div>
+                        <span id="trm-rate" class="font-bold text-lg text-green-400 hidden"></span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-slate-400">Binance Spot USDT/COP:</span>
+                        <div id="binance-loader" class="loader loader-sm"></div>
+                        <span id="binance-rate" class="font-bold text-lg text-amber-400 hidden"></span>
+                    </div>
+                     <div id="error-message" class="text-center text-red-400 text-sm mt-2"></div>
+                </div>
+            </section>
+
+            <!-- Sección de Cálculo -->
+            <section class="bg-slate-800 p-5 rounded-xl shadow-lg">
+                <label for="usd-amount" class="block text-lg font-semibold mb-3 text-slate-300">Ingrese monto en Dólares (USD)</label>
+                <div class="relative">
+                    <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-lg">$</span>
+                    <input type="number" id="usd-amount" placeholder="Ej: 5000" class="w-full bg-slate-900 border-2 border-slate-700 rounded-lg p-3 pl-8 text-white text-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition">
+                </div>
+            </section>
+            
+            <!-- Sección de Resultados -->
+            <section id="results-section" class="bg-slate-950/50 p-5 rounded-xl shadow-lg ring-1 ring-cyan-500/30 hidden">
+                 <h2 class="text-xl font-bold mb-4 text-cyan-400 text-center">Resultados de la Conversión</h2>
+                 <div class="space-y-4">
+                     <div>
+                         <p class="text-slate-400 text-sm">Valor en pesos (TRM):</p>
+                         <p id="trm-value" class="text-2xl font-semibold text-green-400"></p>
+                     </div>
+                      <div>
+                         <p class="text-slate-400 text-sm">Valor en pesos (Binance):</p>
+                         <p id="binance-value" class="text-2xl font-semibold text-amber-400"></p>
+                     </div>
+                     <div class="pt-2">
+                        <p class="text-slate-400 text-sm">Diferencia total:</p>
+                        <p id="difference-summary" class="text-lg font-medium"></p>
+                     </div>
+                 </div>
+            </section>
+        </main>
+        
+        <footer class="text-center mt-8 text-xs text-slate-500">
+            <p>Los datos de TRM y Binance se obtienen de APIs públicas y pueden tener ligeros retrasos.</p>
+            <p>Esta es una herramienta de referencia y no constituye asesoría financiera.</p>
+        </footer>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Elementos del DOM
+            const trmRateEl = document.getElementById('trm-rate');
+            const binanceRateEl = document.getElementById('binance-rate');
+            const usdAmountInput = document.getElementById('usd-amount');
+            const resultsSection = document.getElementById('results-section');
+            const trmValueEl = document.getElementById('trm-value');
+            const binanceValueEl = document.getElementById('binance-value');
+            const differenceSummaryEl = document.getElementById('difference-summary');
+            const errorMessageEl = document.getElementById('error-message');
+
+            const trmLoader = document.getElementById('trm-loader');
+            const binanceLoader = document.getElementById('binance-loader');
+
+            // Variables para almacenar las tasas
+            let trmRate = 0;
+            let binanceRate = 0;
+
+            // Formateador de moneda para COP
+            const copFormatter = new Intl.NumberFormat('es-CO', {
+                style: 'currency',
+                currency: 'COP',
+                maximumFractionDigits: 2,
+            });
+
+            // --- Funciones de Fetch ---
+            
+            const fetchTRM = async () => {
+                try {
+                    // Se corrige la URL eliminando el ":" antes de "vigenciahasta"
+                    const trmApiUrl = 'https://www.datos.gov.co/resource/32sa-8pi3.json?$limit=1&$order=vigenciahasta%20DESC';
+                    const response = await fetch(trmApiUrl);
+                     if (!response.ok) {
+                        throw new Error(`Respuesta de red no fue exitosa para TRM: ${response.statusText}`);
+                    }
+                    const data = await response.json();
+                    
+                    // La API usa el campo "valor"
+                    if (Array.isArray(data) && data.length > 0 && data[0].valor) {
+                        trmRate = parseFloat(data[0].valor);
+                        trmRateEl.textContent = copFormatter.format(trmRate);
+                        trmLoader.classList.add('hidden');
+                        trmRateEl.classList.remove('hidden');
+                        return true;
+                    } else {
+                        throw new Error("Formato de datos de TRM (BanRep) inesperado.");
+                    }
+                } catch (error) {
+                    console.error("Error fetching TRM:", error);
+                    errorMessageEl.textContent += ' No se pudo cargar el TRM. ';
+                    trmLoader.style.display = 'none';
+                    return false;
+                }
+            };
+
+            const fetchBinancePrice = async () => {
+                try {
+                    // Llamada directa a la API de Binance sin proxy
+                    const binanceApiUrl = 'https://api.binance.com/api/v3/ticker/price?symbol=USDTCOP';
+                    const response = await fetch(binanceApiUrl);
+                    if (!response.ok) {
+                        throw new Error(`Respuesta de red no fue exitosa para Binance: ${response.statusText}`);
+                    }
+                    const data = await response.json();
+
+                    if (data && data.price) {
+                        binanceRate = parseFloat(data.price);
+                        binanceRateEl.textContent = copFormatter.format(binanceRate);
+                        binanceLoader.classList.add('hidden');
+                        binanceRateEl.classList.remove('hidden');
+                        return true;
+                    } else {
+                        throw new Error("Formato de datos de Binance inesperado.");
+                    }
+                } catch (error) {
+                    console.error("Error fetching Binance Price:", error);
+                    errorMessageEl.textContent += ' No se pudo cargar el precio de Binance. ';
+                    binanceLoader.style.display = 'none';
+                    return false;
+                }
+            };
+            
+            // --- Lógica de Cálculo y UI ---
+
+            const calculateAndDisplay = () => {
+                const usdAmount = parseFloat(usdAmountInput.value);
+
+                if (!usdAmount || usdAmount <= 0 || !trmRate || !binanceRate) {
+                    resultsSection.classList.add('hidden');
+                    return;
+                }
+
+                const trmValue = usdAmount * trmRate;
+                const binanceValue = usdAmount * binanceRate;
+                const difference = trmValue - binanceValue;
+                
+                trmValueEl.textContent = copFormatter.format(trmValue);
+                binanceValueEl.textContent = copFormatter.format(binanceValue);
+
+                if (difference > 0) {
+                    differenceSummaryEl.innerHTML = `Al vender en Binance, estarías <span class="font-bold text-red-400">perdiendo ${copFormatter.format(difference)}</span> respecto al TRM.`;
+                } else if (difference < 0) {
+                     differenceSummaryEl.innerHTML = `Al vender en Binance, estarías <span class="font-bold text-green-400">ganando ${copFormatter.format(Math.abs(difference))}</span> respecto al TRM.`;
+                } else {
+                    differenceSummaryEl.innerHTML = `El valor es <span class="font-bold text-slate-300">idéntico</span> al del TRM.`;
+                }
+
+                resultsSection.classList.remove('hidden');
+            };
+
+            // Event Listener para el input
+            usdAmountInput.addEventListener('input', calculateAndDisplay);
+            
+            // Carga inicial de datos
+            Promise.all([fetchTRM(), fetchBinancePrice()]).then(([trmSuccess, binanceSuccess]) => {
+                if (trmSuccess && binanceSuccess) {
+                    calculateAndDisplay();
+                } else {
+                    console.error("No se pudieron cargar todos los datos iniciales.");
+                }
+            });
+        });
+    </script>
+</body>
+</html>
